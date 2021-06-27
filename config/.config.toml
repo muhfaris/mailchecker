@@ -1,0 +1,11 @@
+[app]
+    hostname     = "localhost"
+    port         = 6767
+    environment  = "local"
+
+[connections]
+    [connections.pgx]
+        hostname = ""
+        port     = 9
+        username = ""
+        password = ""
