@@ -21,13 +21,14 @@ var EmailStatus = map[string]string{
 
 // EmailVerifier is wrap data of email verifier
 type EmailVerifier struct {
-	Email      string `json:"email"`
-	Status     string `json:"status"`
-	Username   string `json:"username"`
-	Domain     string `json:"domain"`
-	Disposable bool   `json:"is_disposable"`
-	DNSMX      bool   `json:"is_dns_mx"`
-	Message    string `json:"message"`
+	Email        string       `json:"email"`
+	Username     string       `json:"username"`
+	Domain       string       `json:"domain"`
+	Disposable   bool         `json:"is_disposable"`
+	MXValidate   MXValidate   `json:"mx_validation"`
+	SMTPValidate SMTPValidate `json:"smtp_validate"`
+	Status       string       `json:"status"`
+	Message      string       `json:"message"`
 }
 
 // CreateEmailVerifier is create new object of email verifier
@@ -84,7 +85,12 @@ func (e *EmailVerifier) ChangeDisposable(status bool) {
 
 // ChangeDNSMX is change dns mx status
 func (e *EmailVerifier) ChangeDNSMX(status bool) {
-	e.DNSMX = status
+	e.MXValidate.IsValid = status
+}
+
+// ChangeMXValidates is change mx recors
+func (e *EmailVerifier) ChangeMXValidates(mxs []string) {
+	e.MXValidate.Records = mxs
 }
 
 // ChangeMessage is change message email
@@ -94,6 +100,16 @@ func (e *EmailVerifier) ChangeMessage(message string) error {
 	}
 
 	e.Message = message
+	return nil
+}
+
+// ChangeMessageF is change message email
+func (e *EmailVerifier) ChangeMessageF(message string, err error) error {
+	if message == "" {
+		return fmt.Errorf(ErrorMissingParam, "message")
+	}
+
+	e.Message = fmt.Sprintf("%s, %s", message, err.Error())
 	return nil
 }
 
@@ -115,24 +131,36 @@ func (e *EmailVerifier) Valid() error {
 		e.ChangeMessage("disposable email address (temporary email address)")
 	}
 
-	mxs, isMX := EmailMXValidator(e.Domain)
-	if isMX {
-		e.ChangeDNSMX(true)
+	emailMXValidate, err := EmailMXValidator(e.Domain)
+	if err != nil {
+		e.MXValidate.ChangeMessageF("MX DNS not record published", err)
 	}
 
-	if !isMX {
+	if emailMXValidate.IsValid {
+		e.ChangeDNSMX(true)
+		e.ChangeMXValidates(emailMXValidate.Records)
+		e.MXValidate.ChangeMessage("MX DNS record successfully detected")
+	}
+
+	if !emailMXValidate.IsValid {
 		e.ChangeStatus(InvalidEmailStatus)
 		e.ChangeMessage("mail delivery MX host not found")
 	}
 
-	if !isDisposable && isMX {
+	if !isDisposable && emailMXValidate.IsValid {
 		e.ChangeStatus(ValidEmailStatus)
 		e.ChangeMessage("email address is valid")
 	}
 
-	if err := EmailSMTPValidator(mxs, e.Email); err != nil {
+	smtp, err := EmailSMTPValidator(emailMXValidate.Records, e)
+	if err != nil {
 		e.ChangeStatus(InvalidEmailStatus)
 		e.ChangeMessage("email address doesn't exists")
+	}
+
+	if err := smtp.MailValidate(); err != nil {
+		e.ChangeStatus(InvalidEmailStatus)
+		e.ChangeMessage(err.Error())
 	}
 
 	return nil

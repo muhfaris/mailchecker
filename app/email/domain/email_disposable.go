@@ -1,5 +1,7 @@
 package domain
 
+import "strings"
+
 var listMailDisposable = map[string]bool{
 	"0-mail.com":                             true,
 	"027168.com":                             true,
@@ -1839,6 +1841,7 @@ var listMailDisposable = map[string]bool{
 	"mailtome.de":                            true,
 	"mailtothis.com":                         true,
 	"mailtraps.com":                          true,
+	"mailtrap.io":                            true,
 	"mailtrash.net":                          true,
 	"mailtrix.net":                           true,
 	"mailtv.net":                             true,
@@ -3259,8 +3262,11 @@ func EmailDisposableValidator(domain string) bool {
 		return true
 	}
 
-	_, ok := listMailDisposable[domain]
-	if ok {
+	for mail := range listMailDisposable {
+		if ok := strings.Contains(domain, mail); !ok {
+			continue
+		}
+
 		return true
 	}
 
