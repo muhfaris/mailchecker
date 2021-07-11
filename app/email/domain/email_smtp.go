@@ -3,10 +3,10 @@ package domain
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net/smtp"
 
 	"github.com/muhfaris/request"
+	"golang.org/x/net/proxy"
 )
 
 // SMTPValidate is wrap smtp validation
@@ -20,30 +20,60 @@ type SMTPValidate struct {
 func EmailSMTPValidator(mxs []string, e *EmailVerifier) (*SMTPValidate, error) {
 	var smtpValidate = &SMTPValidate{Host: e.Domain, Email: e.Email}
 
-	mx := mxs[0]
-	// Connect to the remote SMTP server.
-	host := fmt.Sprintf("%s:25", mx)
-	c, err := smtp.Dial(host)
-	if err != nil {
-		return smtpValidate, err
+	var valid bool
+	var errorSTMP error
+	for _, mx := range mxs {
+		if valid {
+			continue
+		}
+
+		// create a socks5 dialer
+		dialer, err := proxy.SOCKS5("tcp", "88.198.24.108:1080", nil, proxy.Direct)
+		if err != nil {
+			return &SMTPValidate{}, err
+		}
+
+		host := fmt.Sprintf("%s:25", mx)
+		conn, err := dialer.Dial("tcp", host)
+		if err != nil {
+			return &SMTPValidate{}, err
+		}
+
+		// Connect to the remote SMTP server.
+		//c, err := smtp.Dial(host)
+		c, err := smtp.NewClient(conn, mx)
+		if err != nil {
+			errorSTMP = err
+			continue
+		}
+
+		// Set the sender and recipient first
+		if err = c.Mail("info@example.com"); err != nil {
+			errorSTMP = err
+			continue
+		}
+
+		if err = c.Rcpt(e.Email); err != nil {
+			errorSTMP = err
+			continue
+		}
+
+		// Send the QUIT command and close the connection.
+		err = c.Quit()
+		if err != nil {
+			errorSTMP = err
+			continue
+		}
+
+		valid = true
+		errorSTMP = nil
 	}
 
-	// Set the sender and recipient first
-	if err := c.Mail("info@example.com"); err != nil {
-		return smtpValidate, err
+	if errorSTMP != nil {
+		return smtpValidate, errorSTMP
 	}
 
-	if err := c.Rcpt(e.Email); err != nil {
-		log.Println(err)
-		return smtpValidate, err
-	}
-
-	// Send the QUIT command and close the connection.
-	err = c.Quit()
-	if err != nil {
-		return smtpValidate, err
-	}
-
+	smtpValidate.IsValid = valid
 	return smtpValidate, nil
 }
 

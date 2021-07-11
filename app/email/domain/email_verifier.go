@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/muhfaris/mailchecker/gateway/structures"
 )
@@ -93,8 +94,14 @@ func (e *EmailVerifier) ChangeMXValidates(mxs []string) {
 	e.MXValidate.Records = mxs
 }
 
+// ChangeSMTPValidate is change smtp response
+func (e *EmailVerifier) ChangeSMTPValidate(smtp SMTPValidate) {
+	e.SMTPValidate = smtp
+}
+
 // ChangeMessage is change message email
 func (e *EmailVerifier) ChangeMessage(message string) error {
+	message = strings.ReplaceAll(message, "\n", ", ")
 	if message == "" {
 		return fmt.Errorf(ErrorMissingParam, "message")
 	}
@@ -155,13 +162,15 @@ func (e *EmailVerifier) Valid() error {
 	smtp, err := EmailSMTPValidator(emailMXValidate.Records, e)
 	if err != nil {
 		e.ChangeStatus(InvalidEmailStatus)
-		e.ChangeMessage("email address doesn't exists")
+		e.ChangeMessage(err.Error())
 	}
 
 	if err := smtp.MailValidate(); err != nil {
 		e.ChangeStatus(InvalidEmailStatus)
 		e.ChangeMessage(err.Error())
 	}
+
+	e.ChangeSMTPValidate(*smtp)
 
 	return nil
 }
